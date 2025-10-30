@@ -1,0 +1,22 @@
+name: gaussian-splatting-5090
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+  - nvidia
+dependencies:
+  - cuda-toolkit=12.4
+  - plyfile
+  - python=3.9
+  - pip
+  - pytorch
+  - torchaudio
+  - torchvision
+  - tqdm
+  - pytorch-cuda=12.4
+  - pip:
+    - submodules/diff-gaussian-rasterization
+    - submodules/simple-knn
+    - submodules/fused-ssim
+    - opencv-python
+    - joblib
