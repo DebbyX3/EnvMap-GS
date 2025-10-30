@@ -5,3 +5,13 @@ code/GS-firstPass/.git/
 code/GS-firstPass/viewers/
 code/GS-firstPass/assets/
 code/GS-firstPass/readme.md
+
+code/GS-secondPass/submodules/diff-gaussian-rasterization/build/
+code/GS-secondPass/submodules/fused-ssim/build/
+code/GS-secondPass/submodules/simple-knn/build/
+code/GS-secondPass/.git/
+code/GS-secondPass/viewers/
+code/GS-secondPass/assets/
+code/GS-secondPass/readme.md
+
+Video-Depth-Anything/.git/
