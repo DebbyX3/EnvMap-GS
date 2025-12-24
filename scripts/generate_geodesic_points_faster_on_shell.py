@@ -548,6 +548,7 @@ parser.add_argument("--save_log_txt", type=str, default=None, help="Path to save
 parser.add_argument("--show_points", action="store_true", default=False, help="Show points in Open3D viewer.")
 #parser.add_argument("--shell_thickness_percent", type=float, default=0.3, help="Shell thickness percentage for generator.")
 parser.add_argument("--object_threshold", type=float, required=True, default=None, help="Object threshold used to separate background from foreground.")
+parser.add_argument("--infinity_threshold", type=float, required=False, help="Distance threshold to consider points at infinity (e.g. sky)")
 
 args = parser.parse_args()
 
@@ -565,6 +566,7 @@ show_points = args.show_points
 dataset_distances_folder = args.dataset_distances_folder
 #shell_thickness_percent = args.shell_thickness_percent
 object_threshold = args.object_threshold
+infinity_threshold = args.infinity_threshold
 
 if cameras_bin_path is None:
     cameras_bin_path = f'{sparse_folder}/cameras.bin'
@@ -575,7 +577,7 @@ if images_bin_path is None:
 # save_ply_path file name is below to use threshold in the name
 
 if save_log_txt is None:
-    save_log_txt = f'{dataset_base_folder}/dataset_info_donut_random.txt'
+    save_log_txt = f'{dataset_base_folder}/dataset_info_donut_random_from_{object_threshold}_to_{infinity_threshold}.txt'
 
 sys.stdout = DualWriter(save_log_txt)
 sys.stderr = sys.stdout
@@ -675,38 +677,45 @@ ico_points_pos, ico_faces = icosphere(subdivisions = subdivisions,
 print("num of icosphere points generated: ", ico_points_pos.size/3)
 print("radius of icosphere: ", sphere_radius)
 
+if infinity_threshold is None:
+    # Ottieni tutti i file delle immagini
+    all_image_files = []
+    for subdir, dirs, files in os.walk(images_folder):
+        for file in files:
+            all_image_files.append((subdir, file))
 
-# Ottieni tutti i file delle immagini
-all_image_files = []
-for subdir, dirs, files in os.walk(images_folder):
-    for file in files:
-        all_image_files.append((subdir, file))
+    # Scegli 3 immagini random
+    random_samples = random.sample(all_image_files, min(3, len(all_image_files)))
 
-# Scegli 3 immagini random
-random_samples = random.sample(all_image_files, min(3, len(all_image_files)))
+    for subdir, file in random_samples:
+        image_path = os.path.join(subdir, file)
+        image_filename_base = Path(file).stem
 
-for subdir, file in random_samples:
-    image_path = os.path.join(subdir, file)
-    image_filename_base = Path(file).stem
+        depth_filename = image_filename_base + "_distance.npz"
+        depth_path = os.path.join(dataset_distances_folder, depth_filename)
 
-    depth_filename = image_filename_base + "_distance.npz"
-    depth_path = os.path.join(dataset_distances_folder, depth_filename)
+        if not os.path.exists(depth_path):
+            print(f"Distance map not found for image {file}, skipping.")
+            continue
 
-    if not os.path.exists(depth_path):
-        print(f"Distance map not found for image {file}, skipping.")
-        continue
+        depth_map_file = np.load(depth_path)
+        depth_map = depth_map_file['distance']
 
-    depth_map_file = np.load(depth_path)
-    depth_map = depth_map_file['distance']
+        plt.imshow(depth_map, cmap='viridis')
+        plt.title("Metric Distance Map")
+        plt.show()
 
-    plt.imshow(depth_map, cmap='viridis')
-    plt.title("Metric Distance Map")
-    plt.show()
+    #ask after showing the first 3 distance maps
+    # the threshold representing, e.g., the sky. all points beyond this distance are considered at infinity and splatted on the sphere
+    print("Enter the threshold value for the infinity: ", flush=True)
 
-#ask after showing the first 3 distance maps
-print("Enter the threshold value for the infinity: ", flush=True)
-infinity_threshold = float(input())
-print(f"__INFINITY_THRESHOLD__:{infinity_threshold}", flush=True)
+    try:
+        infinity_threshold = float(input())
+    except Exception as e:
+        print(e, flush=True)
+else:    
+    print(f"Using provided infinity threshold: {infinity_threshold}")
+    print(f"__INFINITY_THRESHOLD__:{infinity_threshold}", flush=True)
 
 # ------------- project 3d point onto the image
 
@@ -853,8 +862,7 @@ if save_ply_path is None:
     save_ply_path = f'{dataset_base_folder}/points3D_{subdivisions}subd-{round(sphere_radius, 4)}radius-donut_between_{object_threshold}_and_{infinity_threshold}.ply'
 
 print("Saving ply to: ", save_ply_path)
-#save_as_ply(final_points, final_colors, save_ply_path)
-
+save_as_ply(final_points, final_colors, save_ply_path)
 
 '''
 print("\nInizio ricerca raggio ottimo")

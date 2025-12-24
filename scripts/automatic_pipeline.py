@@ -21,12 +21,16 @@ parser.add_argument("--iterations", type=int, default=30000, help="Number of ite
 parser.add_argument("--skip_gs", default=False, action='store_true', help="Skip Gaussian Splatting. Just prepare dataset.")
 parser.add_argument("--skip_prepare_dataset", default=False, action='store_true', help="Skip dataset preparation. Just run Gaussian Splatting.")
 parser.add_argument("--distance_threshold", type=float, help="Distance threshold for Gaussian Splatting. Used only if skip_prepare_dataset is True.")
-parser.add_argument("--dataset_base_folder_train", type=str, help="Path to the training dataset base folder. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--geodetic_points_filename", type=str, help="Path to the geodetic point cloud filename for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--center_of_scene", type=str, help="Center of the scene for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--sphere_radius", type=float, help="Radius of the sphere for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--sphere_radii", type=float, help="Radii of the sphere for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--scaled_inner_radius", type=float, help="Scaled inner radius for 1st pass of GS. Used only if skip_prepare_dataset is True.")
+parser.add_argument("--infinity_threshold", required=True, type=float, help="Infinity threshold for splatting points on sphere and filename of 1st pass of GS.")
+parser.add_argument("--skip_registration_in_train", default=False, action='store_true', help="Skip registration of test imgs in train after both GS passes.")
+parser.add_argument("--registration_folder", type=str, help="Path to the registration folder to use for rendering test images. Used only if skip_registration_in_train is True.")
+parser.add_argument("--skip_change_thresholds", default=False, action='store_true', help="Skip set depth thresholds and generating geodesic points.")
+parser.add_argument("--distance_folder", type=str, help="Path to the distance maps folder. Used only if skip_prepare_dataset is True.")
 
 args = parser.parse_args()
 
@@ -44,12 +48,16 @@ iterations = args.iterations
 skip_gs = args.skip_gs
 skip_prepare_dataset = args.skip_prepare_dataset
 threshold_value_args = args.distance_threshold
-dataset_base_folder_train_args = args.dataset_base_folder_train
 geodetic_points_filename_args = args.geodetic_points_filename
 center_of_scene_args = args.center_of_scene
 sphere_radius_args = args.sphere_radius
 sphere_radii_args = args.sphere_radii
 scaled_inner_radius_args = args.scaled_inner_radius
+infinity_threshold = args.infinity_threshold
+skip_registration_in_train = args.skip_registration_in_train
+registration_folder_args = args.registration_folder
+skip_change_thresholds = args.skip_change_thresholds
+distance_folder_args = args.distance_folder
 
 # ------------
 
@@ -184,6 +192,17 @@ if not skip_prepare_dataset:
 
     #----------
 
+if not skip_change_thresholds:
+
+    if skip_prepare_dataset:            
+        dataset_base_folder_train = os.path.join(dataset_base_folder, "train")
+        dataset_base_folder = os.path.dirname(dataset_base_folder_train)
+        input_imgs_base_folder = os.path.join(dataset_base_folder_train, "images")
+        sparse_folder = os.path.join(dataset_base_folder_train, "sparse", "0")
+        images_bin_path = os.path.join(sparse_folder, "images.bin")
+        video_DA_output_folder = os.path.join(dataset_base_folder_train, "video-depth-anything-metric", "original_from_img_seq")
+        distance_folder = os.path.join(video_DA_output_folder, "fromSceneCenter", "distances")
+    
     distances_threshold_folder = os.path.join(video_DA_output_folder, "fromSceneCenter", "distances_threshold")
     threshold_script_path = os.path.abspath(".\\limit_depth_maps_to_threshold.py")
 
@@ -229,7 +248,10 @@ if not skip_prepare_dataset:
 
     images_bg_folder = distances_threshold_folder + "_" + str(threshold_value)
 
-    # EXECUTE BOTH DEPTH AND RANDOM INITIALIZATION
+    # EXECUTE RANDOM INITIALIZATION
+    #depth initialization is commented out because yields worse results + here is confusing
+
+    '''
     # ---------------- DEPTH
     geodesic_script_path = os.path.abspath(".\\generate_geodesic_points_faster_depth.py")
 
@@ -296,22 +318,18 @@ if not skip_prepare_dataset:
     else:
         print(f"Using sphere radius: {sphere_radius}")
     
-    '''
-    if sphere_radii is None:
-        logging.error(f"Sphere radii not captured. Failed with code {exit_code}. Exiting.")
-        sys.exit(exit_code)
-    else:
-        print(f"Using sphere radii: {sphere_radii}")
-    '''
-
+    #if sphere_radii is None:
+    #    logging.error(f"Sphere radii not captured. Failed with code {exit_code}. Exiting.")
+    #    sys.exit(exit_code)
+    #else:
+    #    print(f"Using sphere radii: {sphere_radii}")
+    
     if scaled_inner_radius is None:
         logging.error(f"Scaled inner radius not captured. Failed with code {exit_code}. Exiting.")
         sys.exit(exit_code) 
     else:
         print(f"Using scaled inner radius: {scaled_inner_radius}")
-
-
-
+    '''
 
     # ---------------- RANDOM
     geodesic_script_path = os.path.abspath(".\\generate_geodesic_points_faster_on_shell.py")
@@ -324,7 +342,8 @@ if not skip_prepare_dataset:
         "--images_bg_folder", images_bg_folder,
         "--dataset_base_folder", dataset_base_folder_train,
         "--dataset_distances_folder", distance_folder,
-        "--object_threshold", threshold_value
+        "--object_threshold", str(threshold_value),
+        "--infinity_threshold", str(infinity_threshold)
     ]
 
     # catch stdout to get the threshold value
@@ -334,13 +353,13 @@ if not skip_prepare_dataset:
         stderr=subprocess.STDOUT,
         stdin=sys.stdin, 
         text=True,
-        shell=True
-        
+        shell=True        
     )
 
     geodetic_filename = None
     center_of_scene = None
     sphere_radius = None
+    infinity_threshold = None # the threshold representing, e.g., the sky. all points beyond this distance are considered at infinity and splatted on the sphere
 
     # read line by line
     for line in proc.stdout:
@@ -355,6 +374,8 @@ if not skip_prepare_dataset:
             sphere_radii = line.split(":")[1].strip()
         if line.startswith("__SCALED_INNER_RADIUS__:"):
             scaled_inner_radius = line.split(":")[1].strip()
+        if line.startswith("__INFINITY_THRESHOLD__:"):
+            infinity_threshold = line.split(":")[1].strip()
 
     exit_code = proc.wait()
 
@@ -394,6 +415,10 @@ if not skip_prepare_dataset:
     else:
         print(f"Using scaled inner radius: {scaled_inner_radius}")
 
+    if infinity_threshold is None:
+        logging.error(f"Infinity threshold not captured. Failed with code {exit_code}. Exiting.")
+        sys.exit(exit_code)
+
     #----------
 
     points3d_bin_path = os.path.join(sparse_folder, "points3D.bin")
@@ -416,58 +441,57 @@ if not skip_prepare_dataset:
 #--------------------------------------- BEGIN GAUSSIAN SPLATTING FIRST AND SECOND PASS ------------------------------------------------
 
 #--------------------------------------------------------
-# DI DEFALT GS ESEGUE CON NUVOLA DI PUNTI RANDOM!!!! 
+# DI DEFAULT GS ESEGUE CON NUVOLA DI PUNTI RANDOM!!!! 
 # QUELLA DEPTH SI DEVE FARE A PARTE!!!
 #--------------------------------------------------------
 
 if not skip_gs:
 
-    if skip_prepare_dataset and threshold_value_args is None:
+    #dai errore se sia skip_prepare_dataset e skip_change_thresholds sono True insieme
+    if (skip_prepare_dataset and skip_change_thresholds) and threshold_value_args is None:
         logging.error("If skip_prepare_dataset is True, distance_threshold must be provided. Exiting.")
         exit(1)
-    if skip_prepare_dataset and dataset_base_folder_train_args is None:
-        logging.error("If skip_prepare_dataset is True, dataset_base_folder_train must be provided. Exiting.")
-        exit(1) 
-    if skip_prepare_dataset and geodetic_points_filename_args is None:
+    if (skip_prepare_dataset and skip_change_thresholds) and geodetic_points_filename_args is None:
         logging.error("If skip_prepare_dataset is True, geodetic_points_filename must be provided. Exiting.")
         exit(1)        
-    if skip_prepare_dataset and center_of_scene_args is None:
+    if (skip_prepare_dataset and skip_change_thresholds) and center_of_scene_args is None:
         logging.error("If skip_prepare_dataset is True, center_of_scene must be provided. Exiting.")
         exit(1)  
-    if skip_prepare_dataset and sphere_radius_args is None:
+    if (skip_prepare_dataset and skip_change_thresholds) and sphere_radius_args is None:
         logging.error("If skip_prepare_dataset is True, sphere_radius_args must be provided. Exiting.")
         exit(1)  
     '''
-    if skip_prepare_dataset and sphere_radii_args is None:
+    if (skip_prepare_dataset and skip_change_thresholds) and sphere_radii_args is None:
         logging.error("If skip_prepare_dataset is True, sphere_radii_args must be provided. Exiting.")
         exit(1)  
     '''
-    if skip_prepare_dataset and scaled_inner_radius_args is None:
+    if (skip_prepare_dataset and skip_change_thresholds) and scaled_inner_radius_args is None:
         logging.error("If skip_prepare_dataset is True, scaled_inner_radius must be provided. Exiting.")
         exit(1)
 
-    if skip_prepare_dataset:        
-        dataset_base_folder_train = dataset_base_folder_train_args
-        dataset_base_folder = os.path.dirname(dataset_base_folder_train)
+    if skip_prepare_dataset and skip_change_thresholds:        
+        
         threshold_value = threshold_value_args
-        images_bg_folder = os.path.join(dataset_base_folder_train, "video-depth-anything-metric", "original_from_img_seq", "fromSceneCenter", "distances_threshold") + "_" + str(threshold_value)
-        sparse_folder = os.path.join(dataset_base_folder_train, "sparse", "0")
-        images_bin_path = os.path.join(sparse_folder, "images.bin")
-        camera_bin_path = os.path.join(sparse_folder, "cameras.bin")
-        input_imgs_base_folder = os.path.join(dataset_base_folder_train, "images")
         geodetic_filename = geodetic_points_filename_args        
         center_of_scene = center_of_scene_args
         sphere_radius = sphere_radius_args
         #sphere_radii = sphere_radii_args
         scaled_inner_radius = scaled_inner_radius_args
-    
-        print(f"Using provided dataset base folder for dataset preparation: {dataset_base_folder_train}")
+        
         print(f"Using provided distance threshold value: {threshold_value}")
         print(f"Using provided geodetic points filename: {geodetic_filename}")
         print(f"Using provided center of the scene: {center_of_scene}")
         print(f"Using provided sphere radius: {sphere_radius}")
         #print(f"Using provided sphere radii: {sphere_radii}")
         print(f"Using provided scaled inner radius: {scaled_inner_radius}")
+        print(f"Using provided infinity threshold: {infinity_threshold}")
+
+    dataset_base_folder_train = os.path.join(dataset_base_folder, "train")
+    images_bg_folder = os.path.join(dataset_base_folder_train, "video-depth-anything-metric", "original_from_img_seq", "fromSceneCenter", "distances_threshold") + "_" + str(threshold_value)
+    sparse_folder = os.path.join(dataset_base_folder_train, "sparse", "0")
+    images_bin_path = os.path.join(sparse_folder, "images.bin")
+    camera_bin_path = os.path.join(sparse_folder, "cameras.bin")
+    input_imgs_base_folder = os.path.join(dataset_base_folder_train, "images")
 
     #----------
 
@@ -484,9 +508,9 @@ if not skip_gs:
 
     # Create dataset in data folder
     dataset_name = os.path.basename(os.path.normpath(dataset_base_folder))
-    dataset_name_first_pass = dataset_name + f"_eval_th{threshold_value}_1stPass"
+    dataset_name_first_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-1stPassTEST"
 
-    gs_first_pass_dataset_folder = os.path.join(gs_first_pass_folder, "data", "paper", dataset_name_first_pass)
+    gs_first_pass_dataset_folder = os.path.join(gs_first_pass_folder, "data", "paper_I3D", dataset_name_first_pass)
     os.makedirs(gs_first_pass_dataset_folder, exist_ok=True)
 
     # Copy thresholded images inside 'images' folder
@@ -514,8 +538,9 @@ if not skip_gs:
 
     #----------
 
-    gs_first_pass_output_folder = os.path.join(gs_first_pass_folder, "output", "paper", dataset_name_first_pass)
+    gs_first_pass_output_folder = os.path.join(gs_first_pass_folder, "output", "paper_I3D", dataset_name_first_pass)
 
+    # NO EXPOSURE COMPENSATION
     gs_first_pass_cmd = f'conda run --no-capture-output -n {conda_gs} \
                         python .\\train.py \
                         -s "{gs_first_pass_dataset_folder}" \
@@ -523,12 +548,12 @@ if not skip_gs:
                         -m "{gs_first_pass_output_folder}" \
                         --scene_center "{center_of_scene}" \
                         --background_radius {sphere_radius} \
-                        --scaled_inner_radius {scaled_inner_radius} \
-                        --exposure_lr_init 0.001 \
-                        --exposure_lr_final 0.0001 \
-                        --exposure_lr_delay_steps 5000 \
-                        --exposure_lr_delay_mult 0.001 \
-                        --train_test_exp -r 1'
+                        --scaled_inner_radius {scaled_inner_radius}  -r 1'
+                        #--exposure_lr_init 0.001 \
+                        #--exposure_lr_final 0.0001 \
+                        #--exposure_lr_delay_steps 5000 \
+                        #--exposure_lr_delay_mult 0.001 \
+                        #--train_test_exp
                         #--background_radii "{sphere_radii}" \
 
     exit_code = os.system(gs_first_pass_cmd)
@@ -550,9 +575,9 @@ if not skip_gs:
     #GS Second Pass
 
     # Create dataset in data folder
-    dataset_name_second_pass = dataset_name + f"_eval_th{threshold_value}_2ndPass"
+    dataset_name_second_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-2ndPassTEST"
 
-    gs_second_pass_dataset_folder = os.path.join(gs_second_pass_folder, "data", "paper", dataset_name_second_pass)
+    gs_second_pass_dataset_folder = os.path.join(gs_second_pass_folder, "data", "paper_I3D", dataset_name_second_pass)
     os.makedirs(gs_second_pass_dataset_folder, exist_ok=True)
 
     # Copy whole images inside 'images' folder
@@ -585,7 +610,7 @@ if not skip_gs:
 
     #----------
 
-    gs_second_pass_output_folder = os.path.join(gs_second_pass_folder, "output", "paper", dataset_name_second_pass)
+    gs_second_pass_output_folder = os.path.join(gs_second_pass_folder, "output", "paper_I3D", dataset_name_second_pass)
 
     gs_second_pass_cmd = f'conda run --no-capture-output -n {conda_gs} \
                         python .\\train.py \
@@ -593,12 +618,12 @@ if not skip_gs:
                         --iterations {iterations} \
                         -m "{gs_second_pass_output_folder}" \
                         --scene_center "{center_of_scene}" \
-                        --background_radius {sphere_radius} \
-                        --exposure_lr_init 0.001 \
-                        --exposure_lr_final 0.0001 \
-                        --exposure_lr_delay_steps 5000 \
-                        --exposure_lr_delay_mult 0.001 \
-                        --train_test_exp -r 1'
+                        --background_radius {scaled_inner_radius}  -r 1' # here we set scaled_inner_radius as "bg radius" to remove all splats that tries to go beyond it
+                        #--exposure_lr_init 0.001 \
+                        #--exposure_lr_final 0.0001 \
+                        #--exposure_lr_delay_steps 5000 \
+                        #--exposure_lr_delay_mult 0.001 \
+                        #--train_test_exp
 
     exit_code = os.system(gs_second_pass_cmd)
     if exit_code != 0:
@@ -611,56 +636,67 @@ if not skip_gs:
 
 #----------
 
-try:
-    os.chdir(scripts_folder)
-    print(f"Changed directory to {scripts_folder}")
-except OSError as e:
-    logging.error(f"Failed to change directory to {scripts_folder}: {e}. Exiting.")
-    exit(1)
+if not skip_registration_in_train:
+    try:
+        os.chdir(scripts_folder)
+        print(f"Changed directory to {scripts_folder}")
+    except OSError as e:
+        logging.error(f"Failed to change directory to {scripts_folder}: {e}. Exiting.")
+        exit(1)
 
-#----------
+    #----------
 
-# Create folder
-register_test_folder = os.path.join(dataset_base_folder, "register_test_in_train")
-os.makedirs(register_test_folder, exist_ok=True)
+    # Create folder
+    register_test_folder = os.path.join(dataset_base_folder, "register_test_in_train")
+    os.makedirs(register_test_folder, exist_ok=True)
 
-# copy inside the test imgs
-register_test_imgs_folder = os.path.join(register_test_folder, "input_test")
-os.makedirs(register_test_imgs_folder, exist_ok=True)
+    # copy inside the test imgs
+    register_test_imgs_folder = os.path.join(register_test_folder, "input_test")
+    os.makedirs(register_test_imgs_folder, exist_ok=True)
 
-test_imgs_folder = os.path.join(dataset_base_folder, "test")
-for filename in os.listdir(test_imgs_folder):
-    src_file = os.path.join(test_imgs_folder, filename)
-    dst_file = os.path.join(register_test_imgs_folder, filename)
-    if os.path.isfile(src_file):
-        shutil.copy2(src_file, dst_file)
+    test_imgs_folder = os.path.join(dataset_base_folder, "test")
+    for filename in os.listdir(test_imgs_folder):
+        src_file = os.path.join(test_imgs_folder, filename)
+        dst_file = os.path.join(register_test_imgs_folder, filename)
+        if os.path.isfile(src_file):
+            shutil.copy2(src_file, dst_file)
 
-# copy inside the distorted folder
-distorted_folder = os.path.join(dataset_base_folder_train, "distorted")
-register_distorted_folder = os.path.join(register_test_folder, "distorted")
-os.makedirs(register_distorted_folder, exist_ok=True)   
+    # copy inside the distorted folder
+    distorted_folder = os.path.join(dataset_base_folder_train, "distorted")
+    register_distorted_folder = os.path.join(register_test_folder, "distorted")
+    os.makedirs(register_distorted_folder, exist_ok=True)   
 
-for root, dirs, files in os.walk(distorted_folder):
-    rel_path = os.path.relpath(root, distorted_folder)
-    target_root = os.path.join(register_distorted_folder, rel_path) if rel_path != '.' else register_distorted_folder
-    os.makedirs(target_root, exist_ok=True)
-    for file in files:
-        src_file = os.path.join(root, file)
-        dst_file = os.path.join(target_root, file)
-        shutil.copy2(src_file, dst_file)
+    for root, dirs, files in os.walk(distorted_folder):
+        rel_path = os.path.relpath(root, distorted_folder)
+        target_root = os.path.join(register_distorted_folder, rel_path) if rel_path != '.' else register_distorted_folder
+        os.makedirs(target_root, exist_ok=True)
+        for file in files:
+            src_file = os.path.join(root, file)
+            dst_file = os.path.join(target_root, file)
+            shutil.copy2(src_file, dst_file)
 
 
-# Register the test images into the existing colmap model
-register_train_cmd = f'conda run --no-capture-output -n {conda_3DGS_VR} \
-                    python .\\register_new_images_colmap.py \
-                    --exhisting_source_path "{register_test_folder}"'
-exit_code = os.system(register_train_cmd)
-if exit_code != 0:
-    logging.error(f"Registering test images failed with code {exit_code}. Exiting.")
-    exit(exit_code)
+    # Register the test images into the existing colmap model
+    register_train_cmd = f'conda run --no-capture-output -n {conda_3DGS_VR} \
+                        python .\\register_new_images_colmap.py \
+                        --exhisting_source_path "{register_test_folder}"'
+    exit_code = os.system(register_train_cmd)
+    if exit_code != 0:
+        logging.error(f"Registering test images failed with code {exit_code}. Exiting.")
+        exit(exit_code)
 
 
 # Render test images
+
+# ----------
+
+if skip_registration_in_train and registration_folder_args is None:
+    logging.error("If skip_registration_in_train is True, registration_folder must be provided. Exiting.")
+    exit(1)
+
+if skip_registration_in_train:
+    register_test_folder = registration_folder_args    
+    print(f"Using provided registration folder to render: {register_test_folder}")
 
 #----------
 
@@ -676,7 +712,7 @@ except OSError as e:
 render_test_cmd = f'conda run --no-capture-output -n {conda_gs} \
                     python .\\render.py \
                     -m "{gs_second_pass_output_folder}" \
-                    -s "{register_test_folder}" --render_for_metrics_debh'
+                    -s "{register_test_folder}"'
 exit_code = os.system(render_test_cmd)
 if exit_code != 0:
     logging.error(f"Rendering test images failed with code {exit_code}. Exiting.")

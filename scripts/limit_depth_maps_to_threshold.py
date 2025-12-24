@@ -62,7 +62,7 @@ os.makedirs(save_folder, exist_ok=True)
 # Loop on all images
 for subdir, dirs, files in os.walk(images_folder):
     for file in files:
-
+        
         image_path = os.path.join(subdir, file)
         image_filename_base = Path(file).stem
 

@@ -42,8 +42,8 @@ def PILtoTorch(pil_image, resolution):
     # --- INIZIO MODIFICA ---
     # Controlliamo se la risoluzione è un intero. Se lo è, la convertiamo
     # in una tupla (larghezza, altezza) come si aspetta PIL.
-    if isinstance(resolution, int):
-        resolution = (resolution, resolution)
+    #if isinstance(resolution, int):
+    #    resolution = (resolution, resolution)
     # --- FINE MODIFICA ---
 
     resized_image_PIL = pil_image.resize(resolution)

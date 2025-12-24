@@ -215,26 +215,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # 4. Calcola le loss geometriche
         loss_planarity = compute_planarity_loss(gaussians, scene_center)
-
-        '''
+        
         loss_shell = compute_inward_shell_constraint_loss(
             gaussians, 
             scene_center, 
             background_radius,
             scaled_inner_radius
-        )
-        '''
+        )        
 
         # 5. Calcola la loss totale
         loss = (
             loss_rendering +
-            lambda_planarity * loss_planarity# +
-            #lambda_shell_constraint * loss_shell
+            lambda_planarity * loss_planarity +
+            lambda_shell_constraint * loss_shell
         )
-
-
-
-
 
         # Depth regularization
         Ll1depth_pure = 0.0

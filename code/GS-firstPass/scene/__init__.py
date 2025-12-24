@@ -30,6 +30,10 @@ class Scene:
         self.loaded_iter = None
         self.gaussians = gaussians
 
+        print(f"--scene_center: {getattr(args, 'scene_center', None)}")
+        print(f"--background_radius: {getattr(args, 'background_radius', None)}")
+        print(f"--scaled_inner_radius: {getattr(args, 'scaled_inner_radius', None)}")
+
         if load_iteration:
             if load_iteration == -1:
                 self.loaded_iter = searchForMaxIteration(os.path.join(self.model_path, "point_cloud"))
