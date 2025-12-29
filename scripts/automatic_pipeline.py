@@ -20,7 +20,7 @@ parser.add_argument("--conda_gs", type=str, required=True, help="Name of the con
 parser.add_argument("--iterations", type=int, default=30000, help="Number of iterations for Gaussian Splatting.")
 parser.add_argument("--skip_gs", default=False, action='store_true', help="Skip Gaussian Splatting. Just prepare dataset.")
 parser.add_argument("--skip_prepare_dataset", default=False, action='store_true', help="Skip dataset preparation. Just run Gaussian Splatting.")
-parser.add_argument("--distance_threshold", type=float, help="Distance threshold for Gaussian Splatting. Used only if skip_prepare_dataset is True.")
+parser.add_argument("--distance_threshold", type=float, help="Distance threshold for Gaussian Splatting.")
 parser.add_argument("--geodetic_points_filename", type=str, help="Path to the geodetic point cloud filename for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--center_of_scene", type=str, help="Center of the scene for 1st pass of GS. Used only if skip_prepare_dataset is True.")
 parser.add_argument("--sphere_radius", type=float, help="Radius of the sphere for 1st pass of GS. Used only if skip_prepare_dataset is True.")
@@ -206,13 +206,23 @@ if not skip_change_thresholds:
     distances_threshold_folder = os.path.join(video_DA_output_folder, "fromSceneCenter", "distances_threshold")
     threshold_script_path = os.path.abspath(".\\limit_depth_maps_to_threshold.py")
 
-    cmd = [
-        "conda", "run", "--no-capture-output", "-n", conda_3DGS_VR,
-        "python", threshold_script_path,
-        "--distance_maps_folder", distance_folder,
-        "--images_folder", input_imgs_base_folder,
-        "--save_folder", distances_threshold_folder
-    ]
+    if threshold_value_args is None:        
+        cmd = [
+            "conda", "run", "--no-capture-output", "-n", conda_3DGS_VR,
+            "python", threshold_script_path,
+            "--distance_maps_folder", distance_folder,
+            "--images_folder", input_imgs_base_folder,
+            "--save_folder", distances_threshold_folder
+        ]
+    else:
+        cmd = [
+            "conda", "run", "--no-capture-output", "-n", conda_3DGS_VR,
+            "python", threshold_script_path,
+            "--distance_maps_folder", distance_folder,
+            "--images_folder", input_imgs_base_folder,
+            "--threshold", str(threshold_value_args),
+            "--save_folder", distances_threshold_folder
+        ]
 
     # catch stdout to get the threshold value
     proc = subprocess.Popen(
@@ -508,7 +518,7 @@ if not skip_gs:
 
     # Create dataset in data folder
     dataset_name = os.path.basename(os.path.normpath(dataset_base_folder))
-    dataset_name_first_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-1stPassTEST"
+    dataset_name_first_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-1stPass"
 
     gs_first_pass_dataset_folder = os.path.join(gs_first_pass_folder, "data", "paper_I3D", dataset_name_first_pass)
     os.makedirs(gs_first_pass_dataset_folder, exist_ok=True)
@@ -575,7 +585,7 @@ if not skip_gs:
     #GS Second Pass
 
     # Create dataset in data folder
-    dataset_name_second_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-2ndPassTEST"
+    dataset_name_second_pass = dataset_name + f"-eval-NO_EXP-shell_from_{threshold_value}_to_{infinity_threshold}-2ndPass"
 
     gs_second_pass_dataset_folder = os.path.join(gs_second_pass_folder, "data", "paper_I3D", dataset_name_second_pass)
     os.makedirs(gs_second_pass_dataset_folder, exist_ok=True)
@@ -618,7 +628,7 @@ if not skip_gs:
                         --iterations {iterations} \
                         -m "{gs_second_pass_output_folder}" \
                         --scene_center "{center_of_scene}" \
-                        --background_radius {scaled_inner_radius}  -r 1' # here we set scaled_inner_radius as "bg radius" to remove all splats that tries to go beyond it
+                        --background_radius {scaled_inner_radius}  -r 1' # here we set scaled_inner_radius as "bg radius" to remove all splats that try to go beyond it
                         #--exposure_lr_init 0.001 \
                         #--exposure_lr_final 0.0001 \
                         #--exposure_lr_delay_steps 5000 \

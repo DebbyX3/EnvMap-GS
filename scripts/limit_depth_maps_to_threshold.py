@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser(description="Limit distance maps to threshold a
 parser.add_argument('--distance_maps_folder', type=str, required=True, help='Path to distance maps folder')
 parser.add_argument('--images_folder', type=str, required=True, help='Path to images folder')
 parser.add_argument('--save_folder', type=str, required=True, help='Path to save thresholded images')
+parser.add_argument('--threshold', type=float, required=False, help='Threshold value for depth (optional)')
 args = parser.parse_args()
 
 distance_maps_folder = args.distance_maps_folder
@@ -25,33 +26,34 @@ for subdir, dirs, files in os.walk(images_folder):
     for file in files:
         all_image_files.append((subdir, file))
 
+# --- threshold logic ---
+if args.threshold is not None:
+    threshold = args.threshold
+else:
+    # Scegli 3 immagini random
+    random_samples = random.sample(all_image_files, min(3, len(all_image_files)))
 
-# Scegli 3 immagini random
-random_samples = random.sample(all_image_files, min(3, len(all_image_files)))
+    for subdir, file in random_samples:
+        image_path = os.path.join(subdir, file)
+        image_filename_base = Path(file).stem
 
-for subdir, file in random_samples:
-    image_path = os.path.join(subdir, file)
-    image_filename_base = Path(file).stem
+        depth_filename = image_filename_base + "_distance.npz"
+        depth_path = os.path.join(distance_maps_folder, depth_filename)
 
-    depth_filename = image_filename_base + "_distance.npz"
-    depth_path = os.path.join(distance_maps_folder, depth_filename)
+        if not os.path.exists(depth_path):
+            print(f"Distance map not found for image {file}, skipping.")
+            continue
 
-    if not os.path.exists(depth_path):
-        print(f"Distance map not found for image {file}, skipping.")
-        continue
+        depth_map_file = np.load(depth_path)
+        depth_map = depth_map_file['distance']
 
-    depth_map_file = np.load(depth_path)
-    depth_map = depth_map_file['distance']
+        plt.imshow(depth_map, cmap='viridis')
+        plt.title("Metric Distance Map")
+        plt.show()
 
-    plt.imshow(depth_map, cmap='viridis')
-    plt.title("Metric Distance Map")
-    plt.show()
-
-#ask after showing the first 3 distance maps
-# Limit the depth map to a threshold
-print("Enter the threshold value for depth: ", flush=True)
-threshold = float(input())
-#threshold = 10 #default threshold value
+    #ask after showing the first 3 distance maps
+    print("Enter the threshold value for depth: ", flush=True)
+    threshold = float(input())
 
 print(f"__THRESHOLD__:{threshold}", flush=True)
 
