@@ -53,7 +53,7 @@ def create_true_slitscan_safe(model_path, source_path, iteration, resolution=204
             self.data_device = "cuda"
             self.eval = True
             self.train_test_exp = False
-            self.sh_degree = 3
+            self.sh_degree = 3 
             self.convert_SHs_python = False
             self.compute_cov3D_python = False
             self.debug = False
@@ -65,7 +65,27 @@ def create_true_slitscan_safe(model_path, source_path, iteration, resolution=204
     
     print(f"Loading scene from iteration {iteration}...")
     scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
-    
+
+    # --- CONVERSIONE SH DEGREE ---
+    if SH_DEGREE < dataset.sh_degree:
+        print(f"Converting SH degree from {dataset.sh_degree} to {SH_DEGREE}...")
+        num_coeffs = (SH_DEGREE + 1) ** 2
+        with torch.no_grad():
+            if SH_DEGREE == 0:
+                N = gaussians._features_rest.shape[0]
+                gaussians._features_rest = torch.nn.Parameter(torch.empty((N, 3, 0), device=gaussians._features_rest.device))
+                # Monkey patch: sostituisci la property get_features solo per questa istanza
+                import types
+                class PatchedGaussians(gaussians.__class__):
+                    @property
+                    def get_features(self):
+                        return self._features_dc
+                gaussians.__class__ = PatchedGaussians
+            else:
+                gaussians._features_rest = torch.nn.Parameter(gaussians._features_rest[:, :, :num_coeffs-1])
+            gaussians.active_sh_degree = SH_DEGREE
+    # --- FINE CONVERSIONE SH DEGREE ---
+
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     
@@ -90,7 +110,7 @@ def create_true_slitscan_safe(model_path, source_path, iteration, resolution=204
     CENTER_COL = RENDER_WIDTH // 2
     
     # FoV Verticale (limite per cilindrica ~140-150 gradi)
-    fov_y_rad = math.radians(145) 
+    fov_y_rad = math.radians(FOV_Y) 
     
     # Calcolo FoV Orizzontale coerente per la striscia da 16px
     strip_aspect = RENDER_WIDTH / out_height
@@ -158,28 +178,29 @@ def create_true_slitscan_safe(model_path, source_path, iteration, resolution=204
         del cam
         del w2c_gpu
         
-        # Pulizia ogni 50 colonne (visto che sono render piccoli, possiamo farlo meno spesso)
-        if col_idx % 50 == 0:
+        # Pulizia ogni 20 colonne
+        if col_idx % 20 == 0:
             gc.collect()
             torch.cuda.empty_cache()
             
             # Salvataggio progressivo
-            if col_idx % 200 == 0:
-                torchvision.utils.save_image(final_map, temp_file)
+            #if col_idx % 200 == 0:
+            #    torchvision.utils.save_image(final_map, temp_file)
 
     # Salvataggio Finale
-    output_file = os.path.join(output_path, "env_map_TRUE_slitscan.png")
+    output_file = os.path.join(output_path, f"env_map_slitscan_fov-{FOV_Y}_sh-{SH_DEGREE}.png")
     torchvision.utils.save_image(final_map, output_file)
     print(f"\nFinal Slit-Scan Map saved to: {output_file}")
 
 if __name__ == "__main__":
     MODEL_PATH = "C:\\Users\\User\\Desktop\\Gaussian Splatting\\gaussian-splatting-code\\gass-splat-first-pass-multiply\\output\\paper_I3D\\fields_80-20-eval-NO_EXP-shell_from_70_to_200-1stPass" 
-    SOURCE_PATH = "C:\\Users\\User\\Desktop\\Gaussian Splatting\\gaussian-splatting-code\\gass-splat-first-pass-multiply\\data\\paper_eurographics\\fields_deb_eval_th70.0_1stPass"
+    SOURCE_PATH = "C:\\Users\\User\\Desktop\\Gaussian Splatting\\gaussian-splatting-code\\gass-splat-first-pass-multiply\\data\\paper_I3D\\fields-eval-NO_EXP-shell_from_80.0_to_200.0-1stPass"
     ITERATION = 30000 
-    
+    FOV_Y = 120
+    SH_DEGREE = 0 # 3 default
     try:
         # Se 2048 è troppo lungo per i test, prova resolution=512 per un check rapido
-        create_true_slitscan_safe(MODEL_PATH, SOURCE_PATH, ITERATION, resolution=2048)
+        create_true_slitscan_safe(MODEL_PATH, SOURCE_PATH, ITERATION, resolution=4096)
     except Exception as e:
         import traceback
         traceback.print_exc()
