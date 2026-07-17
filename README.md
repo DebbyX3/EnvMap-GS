@@ -6,6 +6,10 @@ Official scripts for the paper:
 > Deborah Pintani, Ariel Caputo, Noah Lewis, Marc Stamminger, Fabio Pellacini, Andrea Giachetti
 > *The Visual Computer*, 2026 — [DOI: 10.1007/s00371-026-04593-w](https://doi.org/10.1007/s00371-026-04593-w)
 
+> [!NOTE]  
+> Presented at Computer Graphics International 2026 (CGI2026) \
+> Best Presentation Award
+
 EnvMap-GS is a two-pass Gaussian Splatting pipeline for "inside-out" outdoor captures, i.e. scenes where the camera moves in a small, bounded area but looks out towards a much larger environment (sky, mountains, distant buildings, etc.). The scene is split into a **foreground** area (the navigation area, reconstructed with standard 3DGS) and a **background** area, initialized on a geodesic sphere and constrained inside a spherical shell during optimization. This removes the "floaters" that normally appear when standard Gaussian Splatting tries to model very distant, low-parallax content. As a bonus, the background Gaussians can be baked into a classic equirectangular environment map, which is much cheaper to render and works fine for VR navigation.
 
 If you just want to run everything end to end, jump to [Running the full pipeline automatically](#running-the-full-pipeline-automatically). If you want to understand (or run) the pipeline step by step, see [Running the pipeline manually](#running-the-pipeline-manually), which follows exactly what `automatic_pipeline.py` does internally.
